@@ -1,2 +1,2 @@
-# yadu
-Yet Another Docker Utility
+# yadc
+Yet Another Docker Client
