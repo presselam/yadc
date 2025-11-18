@@ -1,7 +1,7 @@
 package monitor
 
 import (
-  "github.com/presselam/yadu/internal/table"
+  "github.com/presselam/yadc/internal/table"
 //  "github.com/charmbracelet/bubbles/spinner"
   "github.com/charmbracelet/bubbles/timer"
   "github.com/charmbracelet/bubbles/textinput"

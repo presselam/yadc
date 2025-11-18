@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/presselam/yadu/internal/monitor"
+	"github.com/presselam/yadc/internal/monitor"
 )
 
 func main() {
