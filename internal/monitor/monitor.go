@@ -1,9 +1,10 @@
 package monitor
 
 import (
+"errors"
+  "strings"
   "github.com/presselam/yadc/internal/table"
-//  "github.com/charmbracelet/bubbles/spinner"
-  "github.com/charmbracelet/bubbles/timer"
+  "github.com/presselam/yadc/internal/banner"
   "github.com/charmbracelet/bubbles/textinput"
   tea "github.com/charmbracelet/bubbletea"
   "github.com/charmbracelet/lipgloss"
@@ -16,14 +17,13 @@ type sessionState uint
 
 const(
   defaultTime = time.Minute
-	timerFocus sessionState = iota
-	tableFocus
+	tableFocus sessionState = iota
 	inputFocus
 )
 
 type model struct {
 	state sessionState
-  timer timer.Model
+  banner banner.Model 
 	table table.Model
 	input textinput.Model
 	index int
@@ -36,7 +36,7 @@ var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
 var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.timer.Init())
+  return nil
 }
   
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -46,7 +46,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 		case tea.KeyMsg:
 		  switch msg.String() {
-				case "ctrl+c", "q":
+				case "ctrl+c":
 				  return m, tea.Quit
 				case ":":
 					m.state = inputFocus
@@ -55,6 +55,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.input.Focus()
 				case "enter":
 					m.state = tableFocus
+          if( m.input.Value() == ":q" ){
+				  return m, tea.Quit
+          }
+          err := m.setContext(m.input.Value())
+          if( err != nil ){
+            log.Printf("Context Error: [%v]", err);
+          }
+
 					m.command = m.input.Value()
 					m.input.SetValue("")
 					m.input.Prompt = ""
@@ -77,10 +85,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+func (m *model) setContext(name string) error {
+  switch {
+   case strings.HasPrefix(":containers", name):
+     m.table.SetContext(table.Containers)
+   case strings.HasPrefix(":images",name):
+     m.table.SetContext(table.Images)
+   case strings.HasPrefix(":volumes", name):
+     m.table.SetContext(table.Volumes)
+   default:
+     return errors.New("Unsupported Command: [" + name + "]")
+  }
+  return nil
+}
+
 func (m *model) currentFocusedModel () string {
-	if m.state == timerFocus {
-		return "timer"
-	}
 	if m.state == inputFocus {
 		return "input"
 	}
@@ -98,36 +117,33 @@ func (m model) View() string {
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("22"))
 
-	modelStyle := lipgloss.NewStyle().
-  	Width(m.width-2).
-		Height(15).
-		Align(lipgloss.Center, lipgloss.Center).
-		BorderStyle(lipgloss.HiddenBorder())
+	tableStyle := lipgloss.NewStyle().
+		Align(lipgloss.Center, lipgloss.Center)
 
-  focusedStyle := lipgloss.NewStyle().
-  	Width(m.width-2).
-		Height(15).
-		Align(lipgloss.Center, lipgloss.Center).
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("69"))
+//  focusedStyle := lipgloss.NewStyle().
+//  	Width(m.width-2).
+//		Height(15).
+//		Align(lipgloss.Center, lipgloss.Center).
+//		BorderStyle(lipgloss.NormalBorder()).
+//		BorderForeground(lipgloss.Color("69"))
 
 	if m.state == tableFocus {
 		s += lipgloss.JoinVertical(lipgloss.Top,
-		  modelStyle.Render(fmt.Sprintf("%4s", m.timer.View())),
-			focusedStyle.Render(m.table.View()),
+		  fmt.Sprintf("%s", m.banner.View()),
+			tableStyle.Render(m.table.View()),
 			inputStyle.Render(m.input.View()),
 		)
 	} else if m.state == inputFocus {
 		inputStyle = inputStyle.BorderForeground(lipgloss.Color("69"))
 		s += lipgloss.JoinVertical(lipgloss.Top,
-		  modelStyle.Render(fmt.Sprintf("%4s", m.timer.View())),
-			focusedStyle.Render(m.table.View()),
+		  fmt.Sprintf("%s", m.banner.View()),
+			tableStyle.Render(m.table.View()),
 			inputStyle.Render(m.input.View()),
 		)
 	}else{
 		s += lipgloss.JoinVertical(lipgloss.Top,
-		  focusedStyle.Render(fmt.Sprintf("%4s", m.timer.View())),
-			modelStyle.Render(m.table.View()),
+		  fmt.Sprintf("%s", m.banner.View()),
+			tableStyle.Render(m.table.View()),
 			inputStyle.Render(m.input.View()),
 		)
 	}
@@ -137,8 +153,9 @@ func (m model) View() string {
 }
 
 func Show() {
-  m := model{state: timerFocus}
-  m.timer = timer.New(defaultTime)
+  tea.LogToFile("debug.log", "debug")
+  m := model{state: tableFocus}
+  m.banner = banner.New()
   m.table = table.New()
 	m.input = textinput.New()
 	m.input.Prompt = ""
