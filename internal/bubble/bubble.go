@@ -2,6 +2,7 @@
 package bubble
 
 import (
+	"log"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -49,6 +50,8 @@ type KeyMap struct {
 	HalfPageDown key.Binding
 	GotoTop      key.Binding
 	GotoBottom   key.Binding
+	ScrollLeft   key.Binding
+	ScrollRight  key.Binding
 }
 
 // ShortHelp implements the KeyMap interface.
@@ -99,6 +102,14 @@ func DefaultKeyMap() KeyMap {
 		GotoBottom: key.NewBinding(
 			key.WithKeys("end", "G"),
 			key.WithHelp("G/end", "go to end"),
+		),
+		ScrollLeft: key.NewBinding(
+			key.WithKeys("left", "h"),
+			key.WithHelp("←/h", "scroll left"),
+		),
+		ScrollRight: key.NewBinding(
+			key.WithKeys("right", "l"),
+			key.WithHelp("→/l", ">>>>"),
 		),
 	}
 }
@@ -206,6 +217,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
+	log.Println(msg)
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
@@ -225,10 +237,24 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.GotoTop()
 		case key.Matches(msg, m.KeyMap.GotoBottom):
 			m.GotoBottom()
+		case key.Matches(msg, m.KeyMap.ScrollLeft):
+			m.MoveLeft(20)
+		case key.Matches(msg, m.KeyMap.ScrollRight):
+			m.MoveRight(20)
 		}
 	}
 
 	return m, nil
+}
+
+func (m *Model) MoveLeft(cols int) {
+	m.viewport.ScrollLeft(cols)
+	m.UpdateViewport()
+}
+
+func (m *Model) MoveRight(cols int) {
+	m.viewport.ScrollRight(cols)
+	m.UpdateViewport()
 }
 
 // Focused returns the focus state of the table.
@@ -251,7 +277,7 @@ func (m *Model) Blur() {
 
 // View renders the component.
 func (m Model) View() string {
-	return m.headersView() + "\n" + m.viewport.View()
+	return m.viewport.View()
 }
 
 // HelpView is a helper method for rendering the help menu from the keymap.
@@ -265,6 +291,7 @@ func (m Model) HelpView() string {
 // columns and rows.
 func (m *Model) UpdateViewport() {
 	renderedRows := make([]string, 0, len(m.rows))
+	renderedRows = append(renderedRows, m.headersView())
 
 	// Render only rows from: m.cursor-m.viewport.Height to: m.cursor+m.viewport.Height
 	// Constant runtime, independent of number of rows in a table.
@@ -275,6 +302,7 @@ func (m *Model) UpdateViewport() {
 		m.start = 0
 	}
 	m.end = clamp(m.cursor+m.viewport.Height, m.cursor, len(m.rows))
+
 	for i := m.start; i < m.end; i++ {
 		renderedRows = append(renderedRows, m.renderRow(i))
 	}
@@ -431,8 +459,6 @@ func (m *Model) renderRow(r int) string {
 		if m.cols[i].Width <= 0 {
 			continue
 		}
-//		style := m.styles.Cell.Width(m.cols[i].Width).MaxWidth(m.cols[i].Width).Inline(true)
-//		renderedCell := style.Render(runewidth.Truncate(value, m.cols[i].Width, "…"))
 		style := lipgloss.NewStyle().Width(m.cols[i].Width).MaxWidth(m.cols[i].Width).Inline(true)
 		renderedCell := m.styles.Cell.Render(style.Render(runewidth.Truncate(value, m.cols[i].Width, "…")))
 		s = append(s, renderedCell)
