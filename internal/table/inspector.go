@@ -1,17 +1,16 @@
 package table
 
 import (
-	//  "log"
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/presselam/yadc/internal/bubble"
 	"github.com/presselam/yadc/internal/docker"
+	"log"
+	// "github.com/charmbracelet/bubbles/key"
 )
 
-func (m *Model) PopulateContainers() error {
-	results, err := docker.Containers()
-	if err != nil {
-		return err
-	}
+func (m *Model) inspectContainer(id string) {
+	log.Printf("container.inspect.%s", id)
+	m.context = InspectContext
+	results, _ := docker.ContainerInspect(id)
 
 	total := 0
 	columns := []bubble.Column{}
@@ -26,18 +25,4 @@ func (m *Model) PopulateContainers() error {
 	}
 
 	m.table.SetData(columns, rows)
-	return nil
-}
-
-func (m *Model) containerKeyMapping() []KeyMapping {
-	retval := []KeyMapping{
-		{cmd: (*Model).inspectContainer,
-			key: key.NewBinding(
-				key.WithKeys("i"),
-				key.WithHelp("i", "inspect"),
-			),
-		},
-	}
-
-	return retval
 }

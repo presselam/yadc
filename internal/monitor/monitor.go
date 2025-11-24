@@ -88,11 +88,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) setContext(name string) error {
 	switch {
 	case strings.HasPrefix(":containers", name):
-		m.table.SetContext(table.Containers)
+		m.table.SetContext(table.ContainerContext)
 	case strings.HasPrefix(":images", name):
-		m.table.SetContext(table.Images)
+		m.table.SetContext(table.ImageContext)
 	case strings.HasPrefix(":volumes", name):
-		m.table.SetContext(table.Volumes)
+		m.table.SetContext(table.VolumeContext)
 	default:
 		return errors.New("Unsupported Command: [" + name + "]")
 	}
