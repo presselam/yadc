@@ -114,9 +114,9 @@ func (m Model) View() string {
 
 func (m *Model) resize(width int, height int) {
 	log.Println("table.resize(", width, ",", height, ")")
-	m.width = width - 4
+	m.width = width - 3
 	m.table.SetWidth(m.width)
-	m.table.SetHeight(height - 12)
+	m.table.SetHeight(height - 9)
 }
 
 func (m Model) Context() ContextState {
