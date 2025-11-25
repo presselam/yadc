@@ -4,7 +4,6 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/presselam/yadc/internal/bubble"
 	"github.com/presselam/yadc/internal/docker"
-	"log"
 )
 
 func (m *Model) PopulateContainers() error {
@@ -78,13 +77,11 @@ func (m *Model) stopContainer(id string) {
 }
 
 func (m *Model) pruneContainer(id string) {
-	log.Println("Prune Requested")
 	go docker.ContainerPrune(id)
 	m.PopulateContainers()
 }
 
 func (m *Model) logContainer(id string) {
-	log.Println("Logs Requested")
 	m.selected = id
 	m.SetContext(LogsContext)
 	m.FetchLogs()

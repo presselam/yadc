@@ -211,7 +211,6 @@ func New() Model {
 		table:  t,
 		sorted: 1,
 	}
-	m.SetContext(ImageContext)
 
 	return m
 }

@@ -3,12 +3,11 @@ package table
 import (
 	"github.com/presselam/yadc/internal/bubble"
 	"github.com/presselam/yadc/internal/docker"
-	"log"
-	// "github.com/charmbracelet/bubbles/key"
+	"github.com/presselam/yadc/internal/logger"
 )
 
 func (m *Model) inspectContainer(id string) {
-	log.Printf("table.inspector.container.inspect.%s", id)
+	logger.Debug("table.inspector.container.inspect.", id)
 	m.SetContext(InspectContext)
 	results, _ := docker.ContainerInspect(id)
 
@@ -28,7 +27,7 @@ func (m *Model) inspectContainer(id string) {
 }
 
 func (m *Model) inspectImage(id string) {
-	log.Printf("tabel.inspector.image.inspect.%s", id)
+	logger.Debug("tabel.inspector.image.inspect.", id)
 	m.SetContext(InspectContext)
 	results, _ := docker.ImageInspect(id)
 

@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/presselam/yadc/internal/banner"
+	"github.com/presselam/yadc/internal/logger"
 	"github.com/presselam/yadc/internal/table"
 	"github.com/presselam/yadc/internal/timers"
 	"log"
@@ -21,9 +22,9 @@ const (
 	defaultTime              = time.Minute
 	tableFocus  sessionState = iota
 	inputFocus
-	containerMode = ":containers"
-	imageMode     = ":images"
-	valueMode     = ":volumes"
+	ContainerMode = ":containers"
+	ImageMode     = ":images"
+	VolumeMode    = ":volumes"
 )
 
 var (
@@ -48,6 +49,7 @@ var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
 var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 func (m model) Init() tea.Cmd {
+	logger.Trace()
 	return tea.Batch(
 		m.banner.Init(),
 		m.table.Init(),
@@ -55,7 +57,7 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	log.Printf("monitor.update: [%v]", msg)
+	logger.Trace(msg)
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -114,12 +116,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) setContext(name string) error {
+	logger.Trace(name)
 	switch {
-	case strings.HasPrefix(containerMode, name):
+	case strings.HasPrefix(ContainerMode, name):
 		m.table.SetContext(table.ContainerContext)
-	case strings.HasPrefix(imageMode, name):
+	case strings.HasPrefix(ImageMode, name):
 		m.table.SetContext(table.ImageContext)
-	case strings.HasPrefix(valueMode, name):
+	case strings.HasPrefix(VolumeMode, name):
 		m.table.SetContext(table.VolumeContext)
 	default:
 		return errors.New("Unsupported Command: [" + name + "]")
@@ -129,6 +132,7 @@ func (m *model) setContext(name string) error {
 }
 
 func (m model) View() string {
+	logger.Trace()
 	var s string
 
 	inputStyle := lipgloss.NewStyle().
@@ -172,17 +176,17 @@ func (m model) View() string {
 	return s
 }
 
-func Show() {
-	tea.LogToFile("debug.log", "debug")
-	log.Println("#=======================================================")
-	log.Println("# ", time.Now())
-	log.Println("#=======================================================")
+func Show(mode string) {
+	tea.LogToFile("debug.log", "")
+	logger.Setup()
+	logger.StartBanner()
 
-	m := model{state: tableFocus, mode: imageMode}
+	m := model{state: tableFocus}
 	m.banner = banner.New()
 	m.table = table.New()
 	m.input = textinput.New()
 	m.input.Prompt = ""
+	m.setContext(mode)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
