@@ -2,11 +2,16 @@ package docker
 
 import (
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/presselam/yadc/internal/bubble"
+	"io"
 	"log"
+	//	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -61,6 +66,36 @@ func Containers() (Results, error) {
 	}
 
 	return retval, nil
+}
+
+func ContainerStop(id string) error {
+	docker, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return err
+	}
+	defer docker.Close()
+
+	err = docker.ContainerStop(context.Background(), id, container.StopOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ContainerRestart(id string) error {
+	docker, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return err
+	}
+	defer docker.Close()
+
+	err = docker.ContainerRestart(context.Background(), id, container.StopOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func ContainerInspect(id string) (Results, error) {
@@ -198,4 +233,60 @@ func displayPorts(ports []container.Port) string {
 
 	retval += strings.Join(keys, ",")
 	return retval
+}
+
+func ContainerPrune(id string) error {
+	docker, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return err
+	}
+	defer docker.Close()
+
+	_, err = docker.ContainersPrune(context.Background(), filters.Args{})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ContainerLog(id string, since string) (Results, error) {
+	log.Println("docker.container.log(", id, ")")
+	retval := Results{
+		[]string{"Logs"},
+		[][]string{},
+		[]int{0},
+	}
+	docker, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		log.Println("docker.container.log.client.err:", err)
+		return retval, err
+	}
+	defer docker.Close()
+
+	reader, err := docker.ContainerLogs(context.Background(), id, container.LogsOptions{ShowStdout: true, ShowStderr: true, Since: since})
+	if err != nil {
+		log.Println("docker.container.log.logs.err:", err)
+		return retval, err
+	}
+
+	for !errors.Is(err, io.EOF) {
+		hdr := make([]byte, 8)
+		_, err = reader.Read(hdr)
+		if err != nil {
+			continue
+		}
+
+		count := binary.BigEndian.Uint32(hdr[4:])
+		dat := make([]byte, count)
+		_, err = reader.Read(dat)
+
+		val := string(dat)
+		retval.Data = append(retval.Data, bubble.Row{val})
+		if len(val) > retval.Width[0] {
+			retval.Width[0] = len(val)
+		}
+	}
+
+	return retval, nil
 }

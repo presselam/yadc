@@ -474,7 +474,7 @@ func (m *Model) renderRow(r int) string {
 			continue
 		}
 		style := lipgloss.NewStyle().Width(m.cols[i].Width).MaxWidth(m.cols[i].Width).Inline(true)
-		rowStyle := lipgloss.NewStyle().Padding(0, 1)
+		rowStyle := lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("225"))
 		if m.styles.Cell != nil {
 			rowStyle = m.styles.Cell(m.rows[r]).Padding(0, 1)
 		}

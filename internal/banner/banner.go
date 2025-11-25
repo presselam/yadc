@@ -5,11 +5,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/presselam/yadc/internal/docker"
+	"github.com/presselam/yadc/internal/timers"
 	"log"
 	"strconv"
+	"time"
 )
 
 type Model struct {
+	id   int
 	info docker.ServerInfo
 }
 
@@ -22,18 +25,36 @@ var valueStyle = lipgloss.NewStyle().
 	AlignHorizontal(lipgloss.Right).
 	Foreground(lipgloss.Color("255"))
 
+func (m Model) tick() tea.Cmd {
+	delay := 5 * time.Second
+
+	return tea.Tick(delay, func(t time.Time) tea.Msg {
+		return timers.TimerMsg{ID: m.id, Tag: t, Timeout: false}
+	})
+}
+
 func (m Model) Init() tea.Cmd {
-	return nil
+	log.Println("table.init")
+	return m.tick()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	log.Printf("banner.update: [%v]", msg)
 
 	switch msg := msg.(type) {
+	case timers.TimerMsg:
+		if msg.ID == m.id {
+			status, err := docker.Info()
+			if err != nil {
+				log.Println(err)
+			}
+			m.info = status
+		}
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width, msg.Height)
 	}
 
-	return m, nil
+	return m, m.tick()
 }
 
 func (m Model) View() string {
@@ -68,6 +89,9 @@ func New() Model {
 		log.Println(err)
 	}
 
-	m := Model{status}
+	m := Model{
+		id:   timers.NextID(),
+		info: status,
+	}
 	return m
 }

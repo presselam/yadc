@@ -3,11 +3,13 @@ package monitor
 import (
 	"errors"
 	"fmt"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/presselam/yadc/internal/banner"
 	"github.com/presselam/yadc/internal/table"
+	"github.com/presselam/yadc/internal/timers"
 	"log"
 	"strings"
 	"time"
@@ -19,54 +21,73 @@ const (
 	defaultTime              = time.Minute
 	tableFocus  sessionState = iota
 	inputFocus
+	containerMode = ":containers"
+	imageMode     = ":images"
+	valueMode     = ":volumes"
+)
+
+var (
+	KeyQuit    = key.NewBinding(key.WithKeys("ctrl+c"))
+	KeyCommand = key.NewBinding(key.WithKeys(":"))
+	KeyEnter   = key.NewBinding(key.WithKeys("enter"))
+	KeyEscape  = key.NewBinding(key.WithKeys("esc"))
 )
 
 type model struct {
-	state   sessionState
-	banner  banner.Model
-	table   table.Model
-	input   textinput.Model
-	index   int
-	width   int
-	height  int
-	command string
+	state  sessionState
+	banner banner.Model
+	table  table.Model
+	input  textinput.Model
+	index  int
+	width  int
+	height int
+	mode   string
 }
 
 var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
 var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return tea.Batch(
+		m.banner.Init(),
+		m.table.Init(),
+	)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	log.Printf("monitor.update: [%v]", msg)
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
+		switch {
+		case key.Matches(msg, KeyQuit):
 			return m, tea.Quit
-		case ":":
+		case key.Matches(msg, KeyCommand):
 			m.state = inputFocus
 			m.input.Prompt = "!"
 			m.input.SetValue("")
 			m.input.Focus()
-		case "enter":
+		case key.Matches(msg, KeyEnter):
 			m.state = tableFocus
-			if m.input.Value() == ":q" {
-				return m, tea.Quit
-			}
 			err := m.setContext(m.input.Value())
 			if err != nil {
 				log.Printf("Context Error: [%v]", err)
 			}
-
-			m.command = m.input.Value()
+			if strings.HasPrefix(":quit", m.input.Value()) {
+				return m, tea.Quit
+			}
 			m.input.SetValue("")
 			m.input.Prompt = ""
+		case key.Matches(msg, KeyEscape):
+			err := m.setContext(m.mode)
+			if err != nil {
+				log.Printf("Context Error: [%v]", err)
+			}
 		}
+
+		// route keymsg to the correct widget
 		switch m.state {
 		case tableFocus:
 			m.table, cmd = m.table.Update(msg)
@@ -75,9 +96,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input, cmd = m.input.Update(msg)
 			cmds = append(cmds, cmd)
 		}
+	case timers.TimerMsg:
+		m.banner, cmd = m.banner.Update(msg)
+		cmds = append(cmds, cmd)
+		m.table, cmd = m.table.Update(msg)
+		cmds = append(cmds, cmd)
 	case tea.WindowSizeMsg:
 		m.input, cmd = m.input.Update(msg)
+		cmds = append(cmds, cmd)
 		m.table, cmd = m.table.Update(msg)
+		cmds = append(cmds, cmd)
 		m.width = msg.Width
 		m.height = msg.Height
 	}
@@ -87,28 +115,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) setContext(name string) error {
 	switch {
-	case strings.HasPrefix(":containers", name):
+	case strings.HasPrefix(containerMode, name):
 		m.table.SetContext(table.ContainerContext)
-	case strings.HasPrefix(":images", name):
+	case strings.HasPrefix(imageMode, name):
 		m.table.SetContext(table.ImageContext)
-	case strings.HasPrefix(":volumes", name):
+	case strings.HasPrefix(valueMode, name):
 		m.table.SetContext(table.VolumeContext)
 	default:
 		return errors.New("Unsupported Command: [" + name + "]")
 	}
+	m.mode = name
 	return nil
-}
-
-func (m *model) currentFocusedModel() string {
-	if m.state == inputFocus {
-		return "input"
-	}
-	return "table"
 }
 
 func (m model) View() string {
 	var s string
-	model := m.currentFocusedModel()
 
 	inputStyle := lipgloss.NewStyle().
 		Width(m.width-2).
@@ -147,14 +168,17 @@ func (m model) View() string {
 			inputStyle.Render(m.input.View()),
 		)
 	}
-	s += helpStyle.Render(fmt.Sprintf("\ntab: focus next * n: new %s q: exit\n", model))
 
 	return s
 }
 
 func Show() {
 	tea.LogToFile("debug.log", "debug")
-	m := model{state: tableFocus}
+	log.Println("#=======================================================")
+	log.Println("# ", time.Now())
+	log.Println("#=======================================================")
+
+	m := model{state: tableFocus, mode: imageMode}
 	m.banner = banner.New()
 	m.table = table.New()
 	m.input = textinput.New()
