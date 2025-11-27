@@ -5,6 +5,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/presselam/yadc/internal/bubble"
+	"github.com/presselam/yadc/internal/logger"
 	"github.com/presselam/yadc/internal/timers"
 	"log"
 	"sort"
@@ -73,12 +74,12 @@ func (m Model) tick() tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	log.Println("table.init")
+	logger.Trace()
 	return m.tick()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	log.Printf("table.update: [%v]", msg)
+	logger.Trace(msg)
 
 	var cmd tea.Cmd
 	var batch []tea.Cmd
@@ -86,7 +87,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case timers.TimerMsg:
 		if msg.ID == m.id {
-			log.Printf("tick: [%v]", msg)
 			// a == a  so that it repopulates the data
 			// fix it
 			m.SetContext(m.context)
@@ -113,7 +113,7 @@ func (m Model) View() string {
 }
 
 func (m *Model) resize(width int, height int) {
-	log.Println("table.resize(", width, ",", height, ")")
+	logger.Trace(width, height)
 	m.width = width - 3
 	m.table.SetWidth(m.width)
 	m.table.SetHeight(height - 9)
@@ -124,7 +124,7 @@ func (m Model) Context() ContextState {
 }
 
 func (m *Model) SetContext(context ContextState) error {
-	log.Printf("context:[%v]\n", context)
+	logger.Trace(context)
 
 	var err error
 	m.context = context

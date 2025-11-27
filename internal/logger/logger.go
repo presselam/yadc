@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"github.com/mgutz/ansi"
 	"log"
 	"os"
@@ -55,6 +56,14 @@ func Trace(args ...any) {
 
 	frame, _ := frames.Next()
 	caller := filepath.Base(frame.Function)
+
+	if len(args) > 0 {
+		values := []string{}
+		for _, v := range args {
+			values = append(values, fmt.Sprintf("%v", v))
+		}
+		caller += " - [" + strings.Join(values, "][") + "]"
+	}
 
 	log.Printf("%sTRACE - %s%s", ansi.Magenta, caller, ansi.Reset)
 }
