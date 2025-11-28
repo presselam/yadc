@@ -31,7 +31,7 @@ func (m *Model) PopulateContainers() error {
 	return nil
 }
 
-func (m *Model) containerKeyMapping() []KeyMapping {
+func (m *Model) containerActions() []KeyMapping {
 	retval := []KeyMapping{
 		{cmd: (*Model).inspectContainer,
 			key: key.NewBinding(
@@ -69,17 +69,19 @@ func (m *Model) containerKeyMapping() []KeyMapping {
 }
 
 func (m *Model) restartContainer(id string) {
+	logger.Trace(id)
 	go docker.ContainerRestart(id)
 	m.PopulateContainers()
 }
 
 func (m *Model) stopContainer(id string) {
+	logger.Trace(id)
 	go docker.ContainerStop(id)
 	m.PopulateContainers()
 }
 
 func (m *Model) pruneContainer(id string) {
-	logger.Debug("table.containers.pruneContainer")
+	logger.Trace(id)
 	if m.focus == TableFocus {
 		m.focus = DialogFocus
 		m.confirm = dialog.NewDialog(
@@ -87,19 +89,20 @@ func (m *Model) pruneContainer(id string) {
 			"This will remove all stopped containers",
 			"Confirm", "Dismiss",
 		)
+	} else {
+		go docker.ContainerPrune(id)
+		m.PopulateContainers()
 	}
-
-	go docker.ContainerPrune(id)
-	m.PopulateContainers()
 }
 
 func (m *Model) logContainer(id string) {
+	logger.Trace(id)
 	m.selected = id
 	m.SetContext(LogsContext)
-	m.FetchLogs()
+	m.fetchLogs()
 }
 
-func (m *Model) FetchLogs() error {
+func (m *Model) fetchLogs() error {
 	results, err := docker.ContainerLog(m.selected, "15m")
 	if err != nil {
 		return err
@@ -121,8 +124,4 @@ func (m *Model) FetchLogs() error {
 	m.table.SetCursor(len(rows))
 
 	return nil
-}
-
-func clamp(v, low, high int) int {
-	return min(max(v, low), high)
 }

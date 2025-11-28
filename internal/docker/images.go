@@ -1,12 +1,16 @@
 package docker
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
-	"log"
+	"github.com/presselam/yadc/internal/logger"
+	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,7 +23,7 @@ const (
 )
 
 func Images() (Results, error) {
-	log.Println("docker.images.Images")
+	logger.Trace()
 	retval := Results{
 		[]string{"ID", "Name", "Contianers", "Size"},
 		[][]string{},
@@ -69,7 +73,7 @@ func Images() (Results, error) {
 }
 
 func ImageDelete(id string) (string, error) {
-	log.Printf("docker.images.ImageDelete.%s", id)
+	logger.Trace(id)
 
 	docker, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -91,7 +95,7 @@ func ImageDelete(id string) (string, error) {
 }
 
 func ImageHistory(id string) (Results, error) {
-	log.Printf("docker.images.ImageHistory.%s", id)
+	logger.Trace(id)
 	retval := Results{
 		[]string{"ID", "Created", "Created By", "Size", "Comment"},
 		[][]string{},
@@ -139,7 +143,7 @@ func ImageHistory(id string) (Results, error) {
 }
 
 func ImagesPrune(id string) (string, error) {
-	log.Println("docker.images.ImagePrune")
+	logger.Trace(id)
 
 	docker, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
@@ -147,12 +151,16 @@ func ImagesPrune(id string) (string, error) {
 	}
 	defer docker.Close()
 
-	report, err := docker.ImagesPrune(context.Background(), filters.Args{})
+	filters := filters.NewArgs()
+	filters.Add("dangling", "false")
+	report, err := docker.ImagesPrune(context.Background(), filters)
 	if err != nil {
+		logger.Error(err.Error())
 		return "", err
 	}
 
 	retval := fmt.Sprintf("Removed: %d Images\nTotal reclaimed space: %d", len(report.ImagesDeleted), report.SpaceReclaimed)
+	logger.Debug(retval)
 
 	return retval, nil
 }
@@ -190,4 +198,50 @@ func ImageInspect(id string) (Results, error) {
 	//  log.Printf("inspect.ImageManifestDescriptor:[%v]", inspect.ImageManifestDescriptor)
 
 	return retval, nil
+}
+
+func ImageSave(id string) (string, error) {
+
+	docker, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return "", err
+	}
+	defer docker.Close()
+
+	inspect, err := docker.ImageInspect(context.Background(), id)
+	if err != nil {
+		return "", err
+	}
+
+	name := inspect.RepoTags[0]
+	base := filepath.Base(name)
+	tarball := strings.Replace(base, ":", "-", -1) + ".tgz"
+	logger.Info("Saving: ", tarball)
+
+	f, err := os.Create("./" + tarball)
+	if err != nil {
+		return "", err
+	}
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			logger.Error(err.Error())
+		}
+	}(f)
+	w := bufio.NewWriter(f)
+	data, err := docker.ImageSave(context.Background(), []string{id})
+	if err != nil {
+		return "", err
+	}
+	_, err = io.Copy(w, data)
+	if err != nil {
+		return "", err
+	}
+	err = w.Flush()
+	if err != nil {
+		return "", err
+	}
+
+	logger.Info("Saving Complete")
+	return tarball, nil
 }

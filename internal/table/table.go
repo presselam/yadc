@@ -14,6 +14,7 @@ import (
 
 type ContextState uint
 type focusState uint
+type action func(*Model, string)
 
 const (
 	ImageContext     ContextState = iota
@@ -42,9 +43,8 @@ type Model struct {
 	selected string
 	sorted   int
 	confirm  dialog.Model
+	action   action
 }
-
-type action func(*Model, string)
 
 type KeyMapping struct {
 	key key.Binding
@@ -108,6 +108,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			case m.confirm.ConfirmActions(msg):
 				if m.confirm.Confirmed() {
 					logger.Info("User selected:", m.confirm.Selected())
+					if m.confirm.Selected() == 0 {
+						row := m.table.SelectedRow()
+						m.action(&m, row[0])
+					}
 					m.focus = TableFocus
 				}
 				return m, nil
@@ -169,7 +173,7 @@ func (m *Model) SetContext(context ContextState) error {
 		err = m.PopulateImages()
 		s.Cell = ImageFormatter
 	case LogsContext:
-		err = m.FetchLogs()
+		err = m.fetchLogs()
 		s.Cell = nil
 	case InspectContext:
 		s.Cell = nil
@@ -193,14 +197,15 @@ func (m *Model) actionHandler(msg tea.KeyMsg) bool {
 	var mappings []KeyMapping
 	switch m.context {
 	case ContainerContext:
-		mappings = m.containerKeyMapping()
+		mappings = m.containerActions()
 	case ImageContext:
-		mappings = m.imageKeyMapping()
+		mappings = m.imageActions()
 	}
 
 	row := m.table.SelectedRow()
 	for _, command := range mappings {
 		if key.Matches(msg, command.key) {
+			m.action = command.cmd
 			command.cmd(m, row[0])
 			return true
 		}
