@@ -5,35 +5,43 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/presselam/yadc/internal/bubble"
+	"github.com/presselam/yadc/internal/dialog"
 	"github.com/presselam/yadc/internal/logger"
 	"github.com/presselam/yadc/internal/timers"
-	"log"
 	"sort"
 	"time"
 )
 
 type ContextState uint
+type focusState uint
 
 const (
-	None             = iota
-	ImageContext     = iota
-	ContainerContext = iota
-	VolumeContext    = iota
-	InspectContext   = iota
-	LogsContext      = iota
+	ImageContext     ContextState = iota
+	ContainerContext ContextState = iota
+	VolumeContext    ContextState = iota
+	InspectContext   ContextState = iota
+	LogsContext      ContextState = iota
+
+	tableFocus  focusState = iota
+	dialogFocus focusState = iota
 )
 
-var baseStyle = lipgloss.NewStyle().
-	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color("240"))
+var (
+	KeyEscape = key.NewBinding(key.WithKeys("esc"))
+	baseStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240"))
+)
 
 type Model struct {
-	id       int
-	table    bubble.Model
-	width    int
-	context  ContextState
-	selected string
-	sorted   int
+	focus        focusState
+	id           int
+	table        bubble.Model
+	width        int
+	context      ContextState
+	selected     string
+	sorted       int
+	confirm      dialog.Model
 }
 
 type action func(*Model, string)
@@ -58,16 +66,13 @@ func (m Model) tick() tea.Cmd {
 	var delay time.Duration
 
 	switch m.context {
-	case LogsContext:
-		delay = 2 * time.Second
 	case InspectContext:
 		return nil
 	default:
-		delay = 5 * time.Second
+		delay = 2 * time.Second
 
 	}
 
-	log.Println("table.tick:[", delay, "]")
 	return tea.Tick(delay, func(t time.Time) tea.Msg {
 		return timers.TimerMsg{ID: m.id, Tag: t, Timeout: false}
 	})
@@ -95,11 +100,23 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width, msg.Height)
 	case tea.KeyMsg:
-		if msg.String() == "esc" {
-			return m, m.tick()
-		}
-		if m.actionHandler(msg) {
-			return m, nil
+		switch m.focus {
+		case dialogFocus:
+			switch {
+			case m.confirm.ConfirmActions(msg):
+				if m.confirm.Confirmed() {
+					logger.Info("User selected:", m.confirm.Selected())
+					m.focus = tableFocus
+				}
+				return m, nil
+			}
+		case tableFocus:
+			switch {
+			case key.Matches(msg, KeyEscape):
+				return m, m.tick()
+			case m.actionHandler(msg):
+				return m, nil
+			}
 		}
 	}
 
@@ -109,7 +126,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	return baseStyle.Render(m.table.View())
+	table := baseStyle.Render(m.table.View())
+
+	if m.focus == dialogFocus {
+		confirm := m.confirm.ConfirmDialog()
+
+		return dialog.PlaceOverlay(
+			lipgloss.Width(table)/2-lipgloss.Width(confirm)/2,
+			lipgloss.Height(table)/2-lipgloss.Height(confirm)/2,
+			confirm,
+			table,
+			false,
+		)
+	}
+	return table
 }
 
 func (m *Model) resize(width int, height int) {
@@ -210,6 +240,7 @@ func New() Model {
 		id:     timers.NextID(),
 		table:  t,
 		sorted: 1,
+		focus:  tableFocus,
 	}
 
 	return m

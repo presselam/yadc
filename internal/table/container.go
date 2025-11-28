@@ -3,7 +3,9 @@ package table
 import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/presselam/yadc/internal/bubble"
+	"github.com/presselam/yadc/internal/dialog"
 	"github.com/presselam/yadc/internal/docker"
+	"github.com/presselam/yadc/internal/logger"
 )
 
 func (m *Model) PopulateContainers() error {
@@ -77,6 +79,16 @@ func (m *Model) stopContainer(id string) {
 }
 
 func (m *Model) pruneContainer(id string) {
+	logger.Debug("table.containers.pruneContainer")
+	if m.focus == tableFocus {
+		m.focus = dialogFocus
+		m.confirm = dialog.NewDialog(
+			"Prune",
+			"This will remove all stopped containers",
+			"Confirm", "Dismiss",
+		)
+	}
+
 	go docker.ContainerPrune(id)
 	m.PopulateContainers()
 }

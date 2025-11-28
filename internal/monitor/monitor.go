@@ -12,7 +12,7 @@ import (
 	"github.com/presselam/yadc/internal/table"
 	"github.com/presselam/yadc/internal/timers"
 	"log"
-	"strconv"
+	//	"strconv"
 	"strings"
 	"time"
 )
@@ -48,8 +48,7 @@ type model struct {
 	width  int
 	height int
 	mode   string
-	modal  string
-	button bool
+	dialog dialog.Model
 }
 
 var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
@@ -71,43 +70,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, KeyRight):
-			if m.state == dialogFocus {
-				m.button = !m.button
-				return m, nil
-			}
-		case key.Matches(msg, KeyLeft):
-			if m.state == dialogFocus {
-				m.button = !m.button
-				return m, nil
-			}
-		case key.Matches(msg, KeySpace):
-			if m.state == dialogFocus {
+		switch m.state {
+		case dialogFocus:
+			if m.dialog.ConfirmActions(msg) {
 				m.state = tableFocus
-				m.modal = ""
 				return m, nil
 			}
-		case key.Matches(msg, KeyQuit):
-			return m, tea.Quit
-		case key.Matches(msg, KeyCommand):
-			m.state = inputFocus
-			m.input.Prompt = "!"
-			m.input.SetValue("")
-			m.input.Focus()
-		case key.Matches(msg, KeyEnter):
-			if m.state == dialogFocus {
-				m.state = tableFocus
-				m.modal = ""
-				logger.Info("User selected: [", strconv.FormatBool(m.button), "]")
-				return m, nil
-			} else {
+		case inputFocus:
+			switch {
+			case key.Matches(msg, KeyEnter):
 				m.state = tableFocus
 				err := m.setContext(m.input.Value())
 				if err != nil {
 					m.state = dialogFocus
-					m.modal = err.Error()
-					m.button = true
+					m.dialog = dialog.NewDialog("ERROR", err.Error(), "Dismiss")
 					log.Printf("Context Error: [%v]", err)
 				}
 				if strings.HasPrefix(":quit", m.input.Value()) {
@@ -116,10 +92,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input.SetValue("")
 				m.input.Prompt = ""
 			}
-		case key.Matches(msg, KeyEscape):
-			err := m.setContext(m.mode)
-			if err != nil {
-				log.Printf("Context Error: [%v]", err)
+		case tableFocus:
+			switch {
+			case key.Matches(msg, KeyQuit):
+				return m, tea.Quit
+			case key.Matches(msg, KeyCommand):
+				m.state = inputFocus
+				m.input.Prompt = "!"
+				m.input.SetValue("")
+				m.input.Focus()
+			case key.Matches(msg, KeyEscape):
+				err := m.setContext(m.mode)
+				if err != nil {
+					log.Printf("Context Error: [%v]", err)
+				}
 			}
 		}
 
@@ -196,52 +182,12 @@ func (m model) View() string {
 	)
 
 	if m.state == dialogFocus {
-		dialogBoxStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#874BFD")).
-			Padding(1, 0).
-			BorderTop(true).
-			BorderLeft(true).
-			BorderRight(true).
-			BorderBottom(true)
+		popup := m.dialog.ConfirmDialog()
 
-		buttonStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFF7DB")).
-			Background(lipgloss.Color("#888B7E")).
-			Padding(0, 3).
-			MarginRight(2).
-			MarginTop(1)
-
-		activeButtonStyle := buttonStyle.
-			Foreground(lipgloss.Color("#FFF7DB")).
-			Background(lipgloss.Color("#F25D94")).
-			MarginRight(2).
-			Underline(true)
-
-		var okButton string
-		var cancelButton string
-		if m.button {
-			okButton = activeButtonStyle.Render("Yes")
-			cancelButton = buttonStyle.Render("Maybe")
-		} else {
-			okButton = buttonStyle.Render("Yes")
-			cancelButton = activeButtonStyle.Render("Maybe")
-		}
-
-		//		blends := gamut.Blends(lipgloss.Color("#F25D94"), lipgloss.Color("#EDFF82"), 50)
-
-		question := lipgloss.NewStyle().Width(50).Align(lipgloss.Center).Render(m.modal)
-		buttons := lipgloss.JoinHorizontal(lipgloss.Top, okButton, cancelButton)
-		ui := lipgloss.JoinVertical(lipgloss.Center, question, buttons)
-
-		confirm := lipgloss.Place(m.width-2, 9,
-			lipgloss.Center, lipgloss.Center,
-			dialogBoxStyle.Render(ui),
-		)
 		return dialog.PlaceOverlay(
-			lipgloss.Width(table)/2,
-			lipgloss.Height(table)/2,
-			confirm,
+			lipgloss.Width(s)/2-lipgloss.Width(popup)/2,
+			lipgloss.Height(s)/2-lipgloss.Height(popup)/2,
+			popup,
 			s,
 			false,
 		)
