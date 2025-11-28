@@ -97,10 +97,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key.Matches(msg, KeyQuit):
 				return m, tea.Quit
 			case key.Matches(msg, KeyCommand):
-				m.state = inputFocus
-				m.input.Prompt = "!"
-				m.input.SetValue("")
-				m.input.Focus()
+				if m.table.Focus() != table.DialogFocus {
+					m.state = inputFocus
+					m.input.Prompt = "!"
+					m.input.SetValue("")
+					m.input.Focus()
+				}
 			case key.Matches(msg, KeyEscape):
 				err := m.setContext(m.mode)
 				if err != nil {

@@ -22,8 +22,8 @@ const (
 	InspectContext   ContextState = iota
 	LogsContext      ContextState = iota
 
-	tableFocus  focusState = iota
-	dialogFocus focusState = iota
+	TableFocus  focusState = iota
+	DialogFocus focusState = iota
 )
 
 var (
@@ -34,14 +34,14 @@ var (
 )
 
 type Model struct {
-	focus        focusState
-	id           int
-	table        bubble.Model
-	width        int
-	context      ContextState
-	selected     string
-	sorted       int
-	confirm      dialog.Model
+	focus    focusState
+	id       int
+	table    bubble.Model
+	width    int
+	context  ContextState
+	selected string
+	sorted   int
+	confirm  dialog.Model
 }
 
 type action func(*Model, string)
@@ -61,6 +61,8 @@ var sortKeys = []key.Binding{
 	key.NewBinding(key.WithKeys("1")),
 	key.NewBinding(key.WithKeys("1")),
 }
+
+func (m Model) Focus() focusState { return m.focus }
 
 func (m Model) tick() tea.Cmd {
 	var delay time.Duration
@@ -101,16 +103,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.resize(msg.Width, msg.Height)
 	case tea.KeyMsg:
 		switch m.focus {
-		case dialogFocus:
+		case DialogFocus:
 			switch {
 			case m.confirm.ConfirmActions(msg):
 				if m.confirm.Confirmed() {
 					logger.Info("User selected:", m.confirm.Selected())
-					m.focus = tableFocus
+					m.focus = TableFocus
 				}
 				return m, nil
 			}
-		case tableFocus:
+		case TableFocus:
 			switch {
 			case key.Matches(msg, KeyEscape):
 				return m, m.tick()
@@ -128,7 +130,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func (m Model) View() string {
 	table := baseStyle.Render(m.table.View())
 
-	if m.focus == dialogFocus {
+	if m.focus == DialogFocus {
 		confirm := m.confirm.ConfirmDialog()
 
 		return dialog.PlaceOverlay(
@@ -240,7 +242,7 @@ func New() Model {
 		id:     timers.NextID(),
 		table:  t,
 		sorted: 1,
-		focus:  tableFocus,
+		focus:  TableFocus,
 	}
 
 	return m

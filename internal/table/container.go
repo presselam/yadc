@@ -80,8 +80,8 @@ func (m *Model) stopContainer(id string) {
 
 func (m *Model) pruneContainer(id string) {
 	logger.Debug("table.containers.pruneContainer")
-	if m.focus == tableFocus {
-		m.focus = dialogFocus
+	if m.focus == TableFocus {
+		m.focus = DialogFocus
 		m.confirm = dialog.NewDialog(
 			"Prune",
 			"This will remove all stopped containers",
