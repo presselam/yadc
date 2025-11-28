@@ -2,7 +2,6 @@
 package bubble
 
 import (
-	"log"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -220,7 +219,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	log.Println(msg)
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {

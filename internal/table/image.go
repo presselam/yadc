@@ -3,11 +3,13 @@ package table
 import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/presselam/yadc/internal/bubble"
+	"github.com/presselam/yadc/internal/dialog"
 	"github.com/presselam/yadc/internal/docker"
+	"github.com/presselam/yadc/internal/logger"
 	"log"
 )
 
-func (m *Model) imageKeyMapping() []KeyMapping {
+func (m *Model) imageActions() []KeyMapping {
 	retval := []KeyMapping{
 		{cmd: (*Model).inspectImage,
 			key: key.NewBinding(
@@ -93,11 +95,34 @@ func (m *Model) removeImage(id string) {
 }
 
 func (m *Model) pruneImages(id string) {
-	log.Printf("table.image.pruneImages.%s", id)
-	go docker.ImagesPrune(id)
-	m.PopulateImages()
+	logger.Trace(id)
+	logger.Debug("table.image.pruneImage.%s", id)
+	if m.focus == TableFocus {
+		m.focus = DialogFocus
+		m.confirm = dialog.NewDialog(
+			"Prune",
+			"This will remove all dangling images",
+			"Confirm", "Dismiss",
+		)
+	} else {
+		logger.Debug("table.image.pruneImage.confirmeds")
+		go docker.ImagesPrune(id)
+		m.PopulateImages()
+	}
 }
 
 func (m *Model) saveImage(id string) {
-	log.Printf("table.image.saveImage.%s", id)
+	logger.Trace(id)
+	logger.Debug("table.image.saveImage.%s", id)
+	if m.focus == TableFocus {
+		m.focus = DialogFocus
+		m.confirm = dialog.NewDialog(
+			"Save",
+			"Create Image Tarball",
+			"Confirm", "Dismiss",
+		)
+	} else {
+		logger.Debug("table.image.saveImage.confirmed")
+		go docker.ImageSave(id)
+	}
 }

@@ -5,6 +5,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/presselam/yadc/internal/docker"
+	"github.com/presselam/yadc/internal/logger"
 	"github.com/presselam/yadc/internal/timers"
 	"log"
 	"strconv"
@@ -34,12 +35,12 @@ func (m Model) tick() tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	log.Println("table.init")
+	logger.Trace()
 	return m.tick()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	log.Printf("banner.update: [%v]", msg)
+	logger.Trace(msg)
 
 	switch msg := msg.(type) {
 	case timers.TimerMsg:

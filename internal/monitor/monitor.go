@@ -2,16 +2,17 @@ package monitor
 
 import (
 	"errors"
-	"fmt"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/presselam/yadc/internal/banner"
+	"github.com/presselam/yadc/internal/dialog"
 	"github.com/presselam/yadc/internal/logger"
 	"github.com/presselam/yadc/internal/table"
 	"github.com/presselam/yadc/internal/timers"
 	"log"
+	//	"strconv"
 	"strings"
 	"time"
 )
@@ -19,12 +20,13 @@ import (
 type sessionState uint
 
 const (
-	defaultTime              = time.Minute
-	tableFocus  sessionState = iota
-	inputFocus
-	ContainerMode = ":containers"
-	ImageMode     = ":images"
-	VolumeMode    = ":volumes"
+	defaultTime                = time.Minute
+	tableFocus    sessionState = iota
+	inputFocus    sessionState = iota
+	dialogFocus   sessionState = iota
+	ContainerMode              = ":containers"
+	ImageMode                  = ":images"
+	VolumeMode                 = ":volumes"
 )
 
 var (
@@ -32,6 +34,9 @@ var (
 	KeyCommand = key.NewBinding(key.WithKeys(":"))
 	KeyEnter   = key.NewBinding(key.WithKeys("enter"))
 	KeyEscape  = key.NewBinding(key.WithKeys("esc"))
+	KeySpace   = key.NewBinding(key.WithKeys(" "))
+	KeyRight   = key.NewBinding(key.WithKeys("right", "l"))
+	KeyLeft    = key.NewBinding(key.WithKeys("left", "h"))
 )
 
 type model struct {
@@ -43,6 +48,7 @@ type model struct {
 	width  int
 	height int
 	mode   string
+	dialog dialog.Model
 }
 
 var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("69"))
@@ -50,6 +56,7 @@ var helpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 func (m model) Init() tea.Cmd {
 	logger.Trace()
+
 	return tea.Batch(
 		m.banner.Init(),
 		m.table.Init(),
@@ -63,29 +70,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, KeyQuit):
-			return m, tea.Quit
-		case key.Matches(msg, KeyCommand):
-			m.state = inputFocus
-			m.input.Prompt = "!"
-			m.input.SetValue("")
-			m.input.Focus()
-		case key.Matches(msg, KeyEnter):
-			m.state = tableFocus
-			err := m.setContext(m.input.Value())
-			if err != nil {
-				log.Printf("Context Error: [%v]", err)
+		switch m.state {
+		case dialogFocus:
+			if m.dialog.ConfirmActions(msg) {
+				m.state = tableFocus
+				return m, nil
 			}
-			if strings.HasPrefix(":quit", m.input.Value()) {
+		case inputFocus:
+			switch {
+			case key.Matches(msg, KeyEnter):
+				m.state = tableFocus
+				err := m.setContext(m.input.Value())
+				if err != nil {
+					m.state = dialogFocus
+					m.dialog = dialog.NewDialog("ERROR", err.Error(), "Dismiss")
+					log.Printf("Context Error: [%v]", err)
+				}
+				if strings.HasPrefix(":quit", m.input.Value()) {
+					return m, tea.Quit
+				}
+				m.input.SetValue("")
+				m.input.Prompt = ""
+			}
+		case tableFocus:
+			switch {
+			case key.Matches(msg, KeyQuit):
 				return m, tea.Quit
-			}
-			m.input.SetValue("")
-			m.input.Prompt = ""
-		case key.Matches(msg, KeyEscape):
-			err := m.setContext(m.mode)
-			if err != nil {
-				log.Printf("Context Error: [%v]", err)
+			case key.Matches(msg, KeyCommand):
+				if m.table.Focus() != table.DialogFocus {
+					m.state = inputFocus
+					m.input.Prompt = "!"
+					m.input.SetValue("")
+					m.input.Focus()
+				}
+			case key.Matches(msg, KeyEscape):
+				err := m.setContext(m.mode)
+				if err != nil {
+					log.Printf("Context Error: [%v]", err)
+				}
 			}
 		}
 
@@ -135,41 +157,41 @@ func (m model) View() string {
 	logger.Trace()
 	var s string
 
-	inputStyle := lipgloss.NewStyle().
+	banner := lipgloss.NewStyle().
+		Render(m.banner.View())
+
+	table := lipgloss.NewStyle().
+		Align(lipgloss.Center, lipgloss.Center).
+		Render(m.table.View())
+
+	color := "22"
+	if m.state == inputFocus {
+		color = "69"
+	}
+
+	input := lipgloss.NewStyle().
 		Width(m.width-2).
 		Height(1).
 		Align(lipgloss.Left, lipgloss.Center).
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("22"))
+		BorderForeground(lipgloss.Color(color)).
+		Render(m.input.View())
 
-	tableStyle := lipgloss.NewStyle().
-		Align(lipgloss.Center, lipgloss.Center)
+	s += lipgloss.JoinVertical(lipgloss.Top,
+		banner,
+		table,
+		input,
+	)
 
-		//  focusedStyle := lipgloss.NewStyle().
-		//  	Width(m.width-2).
-		//		Height(15).
-		//		Align(lipgloss.Center, lipgloss.Center).
-		//		BorderStyle(lipgloss.NormalBorder()).
-		//		BorderForeground(lipgloss.Color("69"))
+	if m.state == dialogFocus {
+		popup := m.dialog.ConfirmDialog()
 
-	if m.state == tableFocus {
-		s += lipgloss.JoinVertical(lipgloss.Top,
-			fmt.Sprintf("%s", m.banner.View()),
-			tableStyle.Render(m.table.View()),
-			inputStyle.Render(m.input.View()),
-		)
-	} else if m.state == inputFocus {
-		inputStyle = inputStyle.BorderForeground(lipgloss.Color("69"))
-		s += lipgloss.JoinVertical(lipgloss.Top,
-			fmt.Sprintf("%s", m.banner.View()),
-			tableStyle.Render(m.table.View()),
-			inputStyle.Render(m.input.View()),
-		)
-	} else {
-		s += lipgloss.JoinVertical(lipgloss.Top,
-			fmt.Sprintf("%s", m.banner.View()),
-			tableStyle.Render(m.table.View()),
-			inputStyle.Render(m.input.View()),
+		return dialog.PlaceOverlay(
+			lipgloss.Width(s)/2-lipgloss.Width(popup)/2,
+			lipgloss.Height(s)/2-lipgloss.Height(popup)/2,
+			popup,
+			s,
+			false,
 		)
 	}
 

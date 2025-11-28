@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"github.com/mgutz/ansi"
 	"log"
 	"os"
@@ -18,9 +19,15 @@ const (
 	LevelInfo  LogLevel = 10
 	LevelWarn  LogLevel = 15
 	LevelError LogLevel = 20
+	LabelTrace          = "TRACE"
+	LabelDebug          = "DEBUG"
+	LabelInfo           = "INFO "
+	LabelWarn           = "WARN "
+	LabelError          = "ERROR"
 )
 
-var logLevel LogLevel
+var logLevel LogLevel = LevelInfo
+var logColor bool = true
 
 func Setup(level ...LogLevel) {
 	if len(level) == 0 {
@@ -44,6 +51,23 @@ func Setup(level ...LogLevel) {
 	}
 }
 
+func logMessage(level string, color string, args ...any) {
+	if !logColor {
+		color = ansi.DefaultFG
+	}
+
+	var message string
+	if len(args) > 0 {
+		values := []string{}
+		for _, v := range args {
+			values = append(values, fmt.Sprintf("%v", v))
+		}
+		message = strings.Join(values, "")
+	}
+
+	log.Printf("%s%-5s - %s%s", color, level, message, ansi.Reset)
+}
+
 func Trace(args ...any) {
 	if logLevel > LevelTrace {
 		return
@@ -56,43 +80,43 @@ func Trace(args ...any) {
 	frame, _ := frames.Next()
 	caller := filepath.Base(frame.Function)
 
-	log.Printf("%sTRACE - %s%s", ansi.Magenta, caller, ansi.Reset)
+	if len(args) > 0 {
+		values := []string{}
+		for _, v := range args {
+			values = append(values, fmt.Sprintf("%v", v))
+		}
+		caller += " - [" + strings.Join(values, "][") + "]"
+	}
+
+	logMessage(LabelTrace, ansi.Magenta, caller)
 }
 
-func Debug(args ...string) {
+func Debug(args ...any) {
 	if logLevel > LevelDebug {
 		return
 	}
-
-	msg := strings.Join(args, "")
-	log.Printf("%sDEBUG - %s%s", ansi.Yellow, msg, ansi.Reset)
+	logMessage(LabelDebug, ansi.Yellow, args)
 }
 
-func Info(args ...string) {
+func Info(args ...any) {
 	if logLevel > LevelInfo {
 		return
 	}
-
-	msg := strings.Join(args, "")
-	log.Printf("INFO  - %s", msg)
+	logMessage(LabelInfo, ansi.DefaultFG, args)
 }
 
-func Warn(args ...string) {
+func Warn(args ...any) {
 	if logLevel > LevelWarn {
 		return
 	}
-
-	msg := strings.Join(args, "")
-	log.Printf("%sWARN  - %s%s", ansi.LightRed, msg, ansi.Reset)
+	logMessage(LabelWarn, ansi.LightRed, args)
 }
 
-func Error(args ...string) {
+func Error(args ...any) {
 	if logLevel > LevelError {
 		return
 	}
-
-	msg := strings.Join(args, "")
-	log.Printf("%sERROR - %s%s", ansi.Red, msg, ansi.Reset)
+	logMessage(LabelError, ansi.Red, args)
 }
 
 func StartBanner() {

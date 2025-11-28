@@ -5,37 +5,46 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/presselam/yadc/internal/bubble"
+	"github.com/presselam/yadc/internal/dialog"
+	"github.com/presselam/yadc/internal/logger"
 	"github.com/presselam/yadc/internal/timers"
-	"log"
 	"sort"
 	"time"
 )
 
 type ContextState uint
+type focusState uint
+type action func(*Model, string)
 
 const (
-	None             = iota
-	ImageContext     = iota
-	ContainerContext = iota
-	VolumeContext    = iota
-	InspectContext   = iota
-	LogsContext      = iota
+	ImageContext     ContextState = iota
+	ContainerContext ContextState = iota
+	VolumeContext    ContextState = iota
+	InspectContext   ContextState = iota
+	LogsContext      ContextState = iota
+
+	TableFocus  focusState = iota
+	DialogFocus focusState = iota
 )
 
-var baseStyle = lipgloss.NewStyle().
-	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color("240"))
+var (
+	KeyEscape = key.NewBinding(key.WithKeys("esc"))
+	baseStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240"))
+)
 
 type Model struct {
+	focus    focusState
 	id       int
 	table    bubble.Model
 	width    int
 	context  ContextState
 	selected string
 	sorted   int
+	confirm  dialog.Model
+	action   action
 }
-
-type action func(*Model, string)
 
 type KeyMapping struct {
 	key key.Binding
@@ -53,32 +62,31 @@ var sortKeys = []key.Binding{
 	key.NewBinding(key.WithKeys("1")),
 }
 
+func (m Model) Focus() focusState { return m.focus }
+
 func (m Model) tick() tea.Cmd {
 	var delay time.Duration
 
 	switch m.context {
-	case LogsContext:
-		delay = 2 * time.Second
 	case InspectContext:
 		return nil
 	default:
-		delay = 5 * time.Second
+		delay = 2 * time.Second
 
 	}
 
-	log.Println("table.tick:[", delay, "]")
 	return tea.Tick(delay, func(t time.Time) tea.Msg {
 		return timers.TimerMsg{ID: m.id, Tag: t, Timeout: false}
 	})
 }
 
 func (m Model) Init() tea.Cmd {
-	log.Println("table.init")
+	logger.Trace()
 	return m.tick()
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	log.Printf("table.update: [%v]", msg)
+	logger.Trace(msg)
 
 	var cmd tea.Cmd
 	var batch []tea.Cmd
@@ -86,7 +94,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case timers.TimerMsg:
 		if msg.ID == m.id {
-			log.Printf("tick: [%v]", msg)
 			// a == a  so that it repopulates the data
 			// fix it
 			m.SetContext(m.context)
@@ -95,11 +102,27 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width, msg.Height)
 	case tea.KeyMsg:
-		if msg.String() == "esc" {
-			return m, m.tick()
-		}
-		if m.actionHandler(msg) {
-			return m, nil
+		switch m.focus {
+		case DialogFocus:
+			switch {
+			case m.confirm.ConfirmActions(msg):
+				if m.confirm.Confirmed() {
+					logger.Info("User selected:", m.confirm.Selected())
+					if m.confirm.Selected() == 0 {
+						row := m.table.SelectedRow()
+						m.action(&m, row[0])
+					}
+					m.focus = TableFocus
+				}
+				return m, nil
+			}
+		case TableFocus:
+			switch {
+			case key.Matches(msg, KeyEscape):
+				return m, m.tick()
+			case m.actionHandler(msg):
+				return m, nil
+			}
 		}
 	}
 
@@ -109,11 +132,24 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	return baseStyle.Render(m.table.View())
+	table := baseStyle.Render(m.table.View())
+
+	if m.focus == DialogFocus {
+		confirm := m.confirm.ConfirmDialog()
+
+		return dialog.PlaceOverlay(
+			lipgloss.Width(table)/2-lipgloss.Width(confirm)/2,
+			lipgloss.Height(table)/2-lipgloss.Height(confirm)/2,
+			confirm,
+			table,
+			false,
+		)
+	}
+	return table
 }
 
 func (m *Model) resize(width int, height int) {
-	log.Println("table.resize(", width, ",", height, ")")
+	logger.Trace(width, height)
 	m.width = width - 3
 	m.table.SetWidth(m.width)
 	m.table.SetHeight(height - 9)
@@ -124,7 +160,7 @@ func (m Model) Context() ContextState {
 }
 
 func (m *Model) SetContext(context ContextState) error {
-	log.Printf("context:[%v]\n", context)
+	logger.Trace(context)
 
 	var err error
 	m.context = context
@@ -137,7 +173,7 @@ func (m *Model) SetContext(context ContextState) error {
 		err = m.PopulateImages()
 		s.Cell = ImageFormatter
 	case LogsContext:
-		err = m.FetchLogs()
+		err = m.fetchLogs()
 		s.Cell = nil
 	case InspectContext:
 		s.Cell = nil
@@ -161,14 +197,15 @@ func (m *Model) actionHandler(msg tea.KeyMsg) bool {
 	var mappings []KeyMapping
 	switch m.context {
 	case ContainerContext:
-		mappings = m.containerKeyMapping()
+		mappings = m.containerActions()
 	case ImageContext:
-		mappings = m.imageKeyMapping()
+		mappings = m.imageActions()
 	}
 
 	row := m.table.SelectedRow()
 	for _, command := range mappings {
 		if key.Matches(msg, command.key) {
+			m.action = command.cmd
 			command.cmd(m, row[0])
 			return true
 		}
@@ -210,6 +247,7 @@ func New() Model {
 		id:     timers.NextID(),
 		table:  t,
 		sorted: 1,
+		focus:  TableFocus,
 	}
 
 	return m
