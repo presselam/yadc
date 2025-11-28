@@ -1,0 +1,254 @@
+package table
+
+import (
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/presselam/yadc/internal/bubble"
+	"github.com/presselam/yadc/internal/dialog"
+	"github.com/presselam/yadc/internal/logger"
+	"github.com/presselam/yadc/internal/timers"
+	"sort"
+	"time"
+)
+
+type ContextState uint
+type focusState uint
+type action func(*Model, string)
+
+const (
+	ImageContext     ContextState = iota
+	ContainerContext ContextState = iota
+	VolumeContext    ContextState = iota
+	InspectContext   ContextState = iota
+	LogsContext      ContextState = iota
+
+	TableFocus  focusState = iota
+	DialogFocus focusState = iota
+)
+
+var (
+	KeyEscape = key.NewBinding(key.WithKeys("esc"))
+	baseStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240"))
+)
+
+type Model struct {
+	focus    focusState
+	id       int
+	table    bubble.Model
+	width    int
+	context  ContextState
+	selected string
+	sorted   int
+	confirm  dialog.Model
+	action   action
+}
+
+type KeyMapping struct {
+	key key.Binding
+	cmd action
+}
+
+var sortKeys = []key.Binding{
+	key.NewBinding(key.WithKeys("1")),
+	key.NewBinding(key.WithKeys("2")),
+	key.NewBinding(key.WithKeys("3")),
+	key.NewBinding(key.WithKeys("4")),
+	key.NewBinding(key.WithKeys("5")),
+	key.NewBinding(key.WithKeys("1")),
+	key.NewBinding(key.WithKeys("1")),
+	key.NewBinding(key.WithKeys("1")),
+}
+
+func (m Model) Focus() focusState { return m.focus }
+
+func (m Model) tick() tea.Cmd {
+	var delay time.Duration
+
+	switch m.context {
+	case InspectContext:
+		return nil
+	default:
+		delay = 2 * time.Second
+
+	}
+
+	return tea.Tick(delay, func(t time.Time) tea.Msg {
+		return timers.TimerMsg{ID: m.id, Tag: t, Timeout: false}
+	})
+}
+
+func (m Model) Init() tea.Cmd {
+	logger.Trace()
+	return m.tick()
+}
+
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	logger.Trace(msg)
+
+	var cmd tea.Cmd
+	var batch []tea.Cmd
+
+	switch msg := msg.(type) {
+	case timers.TimerMsg:
+		if msg.ID == m.id {
+			// a == a  so that it repopulates the data
+			// fix it
+			m.SetContext(m.context)
+			batch = append(batch, m.tick())
+		}
+	case tea.WindowSizeMsg:
+		m.resize(msg.Width, msg.Height)
+	case tea.KeyMsg:
+		switch m.focus {
+		case DialogFocus:
+			switch {
+			case m.confirm.ConfirmActions(msg):
+				if m.confirm.Confirmed() {
+					logger.Info("User selected:", m.confirm.Selected())
+					if m.confirm.Selected() == 0 {
+						row := m.table.SelectedRow()
+						m.action(&m, row[0])
+					}
+					m.focus = TableFocus
+				}
+				return m, nil
+			}
+		case TableFocus:
+			switch {
+			case key.Matches(msg, KeyEscape):
+				return m, m.tick()
+			case m.actionHandler(msg):
+				return m, nil
+			}
+		}
+	}
+
+	m.table, cmd = m.table.Update(msg)
+	batch = append(batch, cmd)
+	return m, tea.Batch(batch...)
+}
+
+func (m Model) View() string {
+	table := baseStyle.Render(m.table.View())
+
+	if m.focus == DialogFocus {
+		confirm := m.confirm.ConfirmDialog()
+
+		return dialog.PlaceOverlay(
+			lipgloss.Width(table)/2-lipgloss.Width(confirm)/2,
+			lipgloss.Height(table)/2-lipgloss.Height(confirm)/2,
+			confirm,
+			table,
+			false,
+		)
+	}
+	return table
+}
+
+func (m *Model) resize(width int, height int) {
+	logger.Trace(width, height)
+	m.width = width - 3
+	m.table.SetWidth(m.width)
+	m.table.SetHeight(height - 9)
+}
+
+func (m Model) Context() ContextState {
+	return m.context
+}
+
+func (m *Model) SetContext(context ContextState) error {
+	logger.Trace(context)
+
+	var err error
+	m.context = context
+	s := m.table.Styles()
+	switch m.context {
+	case ContainerContext:
+		err = m.PopulateContainers()
+		s.Cell = ContainerFormatter
+	case ImageContext:
+		err = m.PopulateImages()
+		s.Cell = ImageFormatter
+	case LogsContext:
+		err = m.fetchLogs()
+		s.Cell = nil
+	case InspectContext:
+		s.Cell = nil
+	}
+	m.table.SetStyles(s)
+
+	return err
+}
+
+func (m *Model) actionHandler(msg tea.KeyMsg) bool {
+	// check sortkeys
+	for i, sortKey := range sortKeys {
+		if key.Matches(msg, sortKey) {
+			m.sorted = i
+			m.sortRows()
+			return true
+		}
+	}
+
+	// check context actions
+	var mappings []KeyMapping
+	switch m.context {
+	case ContainerContext:
+		mappings = m.containerActions()
+	case ImageContext:
+		mappings = m.imageActions()
+	}
+
+	row := m.table.SelectedRow()
+	for _, command := range mappings {
+		if key.Matches(msg, command.key) {
+			m.action = command.cmd
+			command.cmd(m, row[0])
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *Model) sortRows() {
+
+	rows := m.table.Rows()
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i][m.sorted] < rows[j][m.sorted]
+	})
+	m.table.SetRows(rows)
+}
+
+func New() Model {
+
+	t := bubble.New(
+		bubble.WithFocused(true),
+	)
+
+	s := bubble.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(false).
+		Bold(true)
+
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("254")).
+		Background(lipgloss.Color("12")).
+		Bold(false)
+
+	t.SetStyles(s)
+
+	m := Model{
+		id:     timers.NextID(),
+		table:  t,
+		sorted: 1,
+		focus:  TableFocus,
+	}
+
+	return m
+}
