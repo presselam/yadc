@@ -1,14 +1,14 @@
 package main
 
 import (
-	"flag"
 	"github.com/presselam/yadc/internal/monitor"
+	flag "github.com/spf13/pflag"
 )
 
 func main() {
-	container := flag.Bool("containers", false, "start the monitor in container mode")
-	image := flag.Bool("images", false, "start the monitor in images mode")
-	volume := flag.Bool("volumes", false, "start the monitor in volume mode")
+	container := flag.BoolP("containers", "c", false, "start the monitor in container mode")
+	image := flag.BoolP("images", "i", false, "start the monitor in images mode")
+	volume := flag.BoolP("volumes", "v", false, "start the monitor in volume mode")
 	flag.Parse()
 
 	var mode string
