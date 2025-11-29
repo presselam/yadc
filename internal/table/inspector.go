@@ -45,3 +45,23 @@ func (m *Model) inspectImage(id string) {
 
 	m.table.SetData(columns, rows)
 }
+
+func (m *Model) inspectVolume(id string) {
+	logger.Debug("tabel.inspector.volume.inspect.", id)
+	m.SetContext(InspectContext)
+	results, _ := docker.VolumeInspect(id)
+
+	total := 0
+	columns := []bubble.Column{}
+	for i, col := range results.Columns {
+		columns = append(columns, bubble.Column{Title: col, Width: results.Width[i]})
+		total += results.Width[i]
+	}
+
+	rows := []bubble.Row{}
+	for _, r := range results.Data {
+		rows = append(rows, r)
+	}
+
+	m.table.SetData(columns, rows)
+}

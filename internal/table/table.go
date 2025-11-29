@@ -172,6 +172,10 @@ func (m *Model) SetContext(context ContextState) error {
 	case ImageContext:
 		err = m.PopulateImages()
 		s.Cell = ImageFormatter
+	case VolumeContext:
+		m.sorted = 0
+		err = m.PopulateVolumes()
+		s.Cell = nil
 	case LogsContext:
 		err = m.fetchLogs()
 		s.Cell = nil
@@ -200,6 +204,8 @@ func (m *Model) actionHandler(msg tea.KeyMsg) bool {
 		mappings = m.containerActions()
 	case ImageContext:
 		mappings = m.imageActions()
+	case VolumeContext:
+		mappings = m.volumeActions()
 	}
 
 	row := m.table.SelectedRow()
